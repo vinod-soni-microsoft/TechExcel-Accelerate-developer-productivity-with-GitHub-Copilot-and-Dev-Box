@@ -1,56 +1,52 @@
-# The name of the job is what will display on the GitHub repository in the Actions tab.
-name: First Workflow
+  # We only want to run this script manually.
+  on:
+    workflow_dispatch
 
-# The 'on' section tells GitHub under what conditions we want to run this workflow.
-# https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows
-# Common scenarios include:
-  # workflow-dispatch (manual execution)
-  # issues
-  # push
-  # pull_request
-  # schedule
-on:
-  workflow_dispatch:
-  issues:
-    types: [opened]
+  # Environment variables are defined in an "env" section.
+  # We set the target environment to dev.
+  # Open the deploy-advanced.yml file to see how we can accept user input
+  # instead of needing to change this file to switch environments.
+  env:
+    targetEnv: dev
 
-# This section covers the work to perform.
-# We include one or more jobs in this section.
-jobs:
-  # Each individual job will include details like execution order,
-  # pre-requisite jobs, and execution platform.
-  job1:
-    # We can run jobs on GitHub hosted VM runners in Windows, Ubuntu, and Mac OS.
-    # We can also run jobs on self-hosted hardware.
-    runs-on: ubuntu-latest
+  # The overall workflow name will be Azure Bicep. This will show up in the
+  # GitHub Action page.
+  name: Azure Bicep
+  jobs:
+    # This script has one job: build and deploy the IaC resources
+    build-and-deploy:
+      # We run this on an Ubuntu-based GitHub hosted runner. This hosted runner
+      # has certain software already installed, including az cli
+      runs-on: ubuntu-latest
+      steps:
+      # Check out the code. This grabs code from the repository and
+      # makes it available to the GitHub hosted runner. It will usually be the
+      # first task for any workflow
+      - uses: actions/checkout@main
 
-    # Each job contains one or more steps. A step needs to have at least a name and a command.
-    steps:
-    - name: Step one
-      # The 'run' command executes a shell or command script. Because this is Ubuntu, the
-      # default run command will be /bin/bash
-      run: echo "Log from step one"
-      # This section does not appear in the solution file but demonstrates how to set
-      # custom variables that will be available in the run script.
-      env:
-        VARIABLE_NAME: value
-    - name: Step two
-      run: echo "Log from step two"
-      
-  job2:
-    # Job 2 will only run after job 1 completes.
-    # Removing this 'needs' section would make the jobs run simultaneously.
-    needs: job1
-    runs-on: ubuntu-latest
+        # Log into Azure using a federated credential. We have already set up the
+        # federation process in a prior step, so we need to pass in the following:
+        # Client ID = Application registration ID
+        # Tenant ID = Application owner organization ID (previously called Tenant ID in Azure)
+        # Subscription ID
+        # https://github.com/azure/login
+      - uses: azure/login@v2.1.1
+        with:
+          client-id: $
+          tenant-id: $
+          subscription-id: $
+          # We also need to ensure that enable-AzPSSession is true. This is important for
+          # using OIDC in Azure. If we were to pass in a client secret instead, we would not need
+          # this setting enabled
+          enable-AzPSSession: true
 
-    steps:
-    - name: Cowsays
-      # The 'uses' command executes a remote GitHub action.
-      # A command like mscoutermarsh/cowsays-action means you can
-      # find this code at https://github.com/mscoutermarsh/cowsays-action
-      uses: mscoutermarsh/cowsays-action@master
-      # The 'with' block includes parameters that the workflow will pass
-      # to this action. Parameters are all in key-value format.
-      with:
-        text: 'Ready for prod--ship it!'
-        color: 'magenta'
+        # Deploy ARM template
+      - name: Run ARM deploy
+        # https://github.com/azure/arm-deploy
+        uses: azure/arm-deploy@v1
+        with:
+          subscriptionId: $
+          resourceGroupName: $
+          template: ./InfrastructureAsCode/main.bicep
+          # Use the environment variable called targetEnv
+          parameters: environment=$
